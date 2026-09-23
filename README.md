@@ -36,7 +36,8 @@ Du brauchst drei Angaben:
 5. Optional **„Verbindung testen"** tippen (zeigt sofort den Sensorwert oder den Fehler), dann **Speichern**
 
 Direkt nach dem Speichern wird der erste Wert im Hintergrund abgerufen; bis dahin zeigt das
-Target kurz „Lädt …". Danach aktualisiert sich der Wert automatisch etwa alle **15 Minuten**.
+Target kurz „Lädt …". Danach aktualisiert sich der Wert automatisch etwa alle **15 Minuten** —
+auch wenn das Handy länger ruht (Doze) und nach einem Neustart.
 Als Symbol wird das Icon des Sensors aus Home Assistant übernommen (aus `icon` bzw.
 `device_class`), sonst ein Haus-Symbol.
 
@@ -114,6 +115,11 @@ Die Bedingung ist **erfüllt, wenn der Zustand `home` ist**. In Smartspacer läs
   immer `https` verwenden.
 - Der Token sollte in Home Assistant einem Benutzer mit möglichst wenig Rechten gehören,
   wenn du auf Nummer sicher gehen willst.
+- Nach einem **Neustart** oder App-Update frischt das Plugin alle Werte von selbst auf; dafür
+  braucht es die Berechtigung, beim Systemstart zu starten.
+- **Fehlersuche:** Das Plugin protokolliert die letzten 300 Abrufe (Zeitpunkt, Auslöser, Ergebnis
+  bzw. Fehler — ohne URL und Token) in einer Datei, abrufbar per
+  `adb pull /sdcard/Android/data/com.noirdraco.hasensorsmartspacertarget/files/refresh_log.txt`.
 
 ## Build
 

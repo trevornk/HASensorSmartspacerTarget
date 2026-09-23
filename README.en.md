@@ -36,7 +36,8 @@ You need three things:
 5. Optionally tap **"Test connection"** (shows the sensor value right away, or the error), then **Save**
 
 Right after saving, the first value is fetched in the background; until then the target briefly
-shows "Loading …". After that it refreshes automatically roughly every **15 minutes**. The icon
+shows "Loading …". After that it refreshes automatically roughly every **15 minutes** — also
+while the phone rests for a long time (Doze) and after a reboot. The icon
 is taken from the sensor in Home Assistant (from `icon` or `device_class`), otherwise a house icon.
 
 ### 3. Tapping the target and changing the values
@@ -107,6 +108,11 @@ The condition is **met when the state is `home`**. In Smartspacer it can be **in
   `https`.
 - For extra safety, the token should belong to a Home Assistant user with as few permissions as
   possible.
+- After a **reboot** or app update, the plugin refreshes all values on its own; this requires the
+  permission to start at boot.
+- **Troubleshooting:** the plugin logs the last 300 fetches (time, trigger, result or error —
+  without URL and token) to a file you can pull with
+  `adb pull /sdcard/Android/data/com.noirdraco.hasensorsmartspacertarget/files/refresh_log.txt`.
 
 ## Build
 

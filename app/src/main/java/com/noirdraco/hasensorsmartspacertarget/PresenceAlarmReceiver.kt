@@ -18,12 +18,11 @@ class PresenceAlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_PRESENCE_HEARTBEAT) return
-        HomeAssistantPrefs.presenceIds(context)
-            .forEach { HomeAssistantPrefs.enqueuePresenceRefresh(context, it) }
-        HomeAssistantPrefs.targetIds(context)
-            .forEach { HomeAssistantPrefs.enqueueRefresh(context, it) }
-        // Nächsten Heartbeat setzen (setAndAllowWhileIdle wiederholt nicht von selbst).
-        HomeAssistantPrefs.scheduleHeartbeat(context)
+        RefreshLog.log(context, "heartbeat")
+        HomeAssistantPrefs.refreshAll(context, RefreshLog.TRIGGER_HEARTBEAT)
+        // Nächsten Heartbeat setzen (setAndAllowWhileIdle wiederholt nicht von selbst). force: der
+        // gemerkte Termin ist gerade der, der eben gefeuert hat.
+        HomeAssistantPrefs.scheduleHeartbeat(context, force = true)
     }
 
     companion object {

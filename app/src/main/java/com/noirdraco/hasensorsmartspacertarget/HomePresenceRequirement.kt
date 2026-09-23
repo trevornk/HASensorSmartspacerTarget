@@ -24,15 +24,19 @@ class HomePresenceRequirement : SmartspacerRequirementProvider() {
         // veraltet oder leer, wird ein Abruf im Hintergrund angestoßen; der Worker meldet per
         // notifyChange zurück, sobald sich der Zustand geändert hat.
         if (settings != null) {
-            // Selbstheilung: Registrierung fürs Auffrischen per Target-Update-Broadcast sicherstellen
-            // (auch für Instanzen, die vor dieser Änderung eingerichtet wurden) und periodischen
-            // Fallback-Takt am Laufen halten (KEEP).
+            // Selbstheilung: Registrierung fürs Auffrischen per Heartbeat und Target-Update-Broadcast
+            // sicherstellen (auch für Instanzen, die vor dieser Änderung eingerichtet wurden) und den
+            // Heartbeat setzen, falls keiner aussteht. Alte periodische Jobs einmalig abräumen.
             HomeAssistantPrefs.addPresenceId(context, smartspacerId)
             HomeAssistantPrefs.scheduleHeartbeat(context)
-            HomeAssistantPrefs.enqueuePresencePeriodicRefresh(context, smartspacerId)
+            HomeAssistantPrefs.cancelLegacyPeriodicRefreshes(context)
             val stale = value == null ||
                 System.currentTimeMillis() - value.timestamp > REFRESH_THRESHOLD_MS
-            if (stale) HomeAssistantPrefs.enqueuePresenceRefresh(context, smartspacerId)
+            if (stale) {
+                HomeAssistantPrefs.enqueuePresenceRefresh(
+                    context, smartspacerId, RefreshLog.TRIGGER_ON_DEMAND
+                )
+            }
         }
 
         return value != null && value.state.trim().equals(STATE_HOME, ignoreCase = true)

@@ -10,12 +10,10 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.workDataOf
@@ -142,9 +140,22 @@ object HomeAssistantPrefs {
 
     private fun workName(smartspacerId: String) = "ha_refresh_$smartspacerId"
 
-    fun enqueueRefresh(context: Context, smartspacerId: String) {
+    /**
+     * Abruf fürs Sensor-Target. [trigger] landet nur im [RefreshLog].
+     *
+     * Standardmäßig [ExistingWorkPolicy.KEEP]: Heartbeat, Smartspacer-Broadcast und Boot können
+     * kurz nacheinander kommen — mit REPLACE würde der zweite Auslöser einen laufenden Abruf
+     * abbrechen, im Doze womöglich mitten im knappen Netzfenster. Nur das Setup ersetzt ([replace]),
+     * damit ein Abruf, der noch im Backoff hängt, nicht den ersten Wert verzögert.
+     */
+    fun enqueueRefresh(
+        context: Context,
+        smartspacerId: String,
+        trigger: String,
+        replace: Boolean = false
+    ) {
         val request = OneTimeWorkRequestBuilder<HomeAssistantWorker>()
-            .setInputData(workDataOf(HomeAssistantWorker.KEY_SMARTSPACER_ID to smartspacerId))
+            .setInputData(refreshInput(smartspacerId, trigger))
             // Expedited + Netz-Constraint aus demselben Grund wie beim Anwesenheits-Refresh: im
             // Doze ist ohne dieses kurze Netzfenster kein DNS möglich, der Abruf scheitert und der
             // Cache bleibt auf dem Zustand von gestern stehen. Bei gesetztem Anzeige-Filter fällt
@@ -161,7 +172,7 @@ object HomeAssistantPrefs {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             workName(smartspacerId),
-            ExistingWorkPolicy.REPLACE,
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request
         )
     }
@@ -174,12 +185,18 @@ object HomeAssistantPrefs {
 
     /**
      * Refresh für die Anwesenheits-Bedingung (Requirement). Wird u. a. aus
-     * [HomePresenceRequirement.isRequirementMet] angestoßen; deshalb [ExistingWorkPolicy.KEEP],
-     * damit ein laufender Abruf nicht bei jeder Auswertung neu gestartet wird.
+     * [HomePresenceRequirement.isRequirementMet] angestoßen; deshalb standardmäßig
+     * [ExistingWorkPolicy.KEEP], damit ein laufender Abruf nicht bei jeder Auswertung neu startet.
+     * [replace] wie bei [enqueueRefresh] nur fürs Setup.
      */
-    fun enqueuePresenceRefresh(context: Context, smartspacerId: String) {
+    fun enqueuePresenceRefresh(
+        context: Context,
+        smartspacerId: String,
+        trigger: String,
+        replace: Boolean = false
+    ) {
         val request = OneTimeWorkRequestBuilder<HomePresenceWorker>()
-            .setInputData(workDataOf(HomePresenceWorker.KEY_SMARTSPACER_ID to smartspacerId))
+            .setInputData(refreshInput(smartspacerId, trigger))
             // Expedited: Android gewährt diesem Job auch im Doze/Standby ein kurzes Zeitfenster mit
             // Netzzugriff. Ohne das scheitert der Abruf zur (Cloud-)URL im Ruhezustand meist an DNS,
             // sodass eine Anwesenheitsänderung unterwegs/nach dem Heimkommen nicht bemerkt wird.
@@ -196,7 +213,7 @@ object HomeAssistantPrefs {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             presenceWorkName(smartspacerId),
-            ExistingWorkPolicy.KEEP,
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request
         )
     }
@@ -205,36 +222,33 @@ object HomeAssistantPrefs {
         WorkManager.getInstance(context).cancelUniqueWork(presenceWorkName(smartspacerId))
     }
 
-    private fun presencePeriodicWorkName(smartspacerId: String) = "ha_presence_periodic_$smartspacerId"
+    private fun refreshInput(smartspacerId: String, trigger: String) = workDataOf(
+        HaRefreshWorker.KEY_SMARTSPACER_ID to smartspacerId,
+        HaRefreshWorker.KEY_TRIGGER to trigger
+    )
 
-    /**
-     * Periodischer Hintergrund-Refresh für die Anwesenheits-Bedingung. Nötig, weil Smartspacer
-     * Requirements — anders als Targets (`REQUEST_TARGET_UPDATE`) — keinen eigenen periodischen
-     * Auslöser gibt. Ohne diesen Takt würde eine Anwesenheitsänderung erst bemerkt, wenn Smartspacer
-     * die Bedingung ohnehin auswertet. Der Worker meldet `notifyChange` nur bei State-Wechsel.
-     *
-     * [ExistingPeriodicWorkPolicy.KEEP], damit wiederholte Aufrufe (auch aus
-     * [HomePresenceRequirement.isRequirementMet] zum Selbstheilen bestehender Instanzen) den
-     * 15-Minuten-Takt nicht ständig zurücksetzen. WorkManager übersteht Neustarts.
-     */
-    fun enqueuePresencePeriodicRefresh(context: Context, smartspacerId: String) {
-        val request = PeriodicWorkRequestBuilder<HomePresenceWorker>(15, TimeUnit.MINUTES)
-            .setInputData(workDataOf(HomePresenceWorker.KEY_SMARTSPACER_ID to smartspacerId))
-            .setBackoffCriteria(
-                BackoffPolicy.EXPONENTIAL,
-                WorkRequest.MIN_BACKOFF_MILLIS,
-                TimeUnit.MILLISECONDS
-            )
-            .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            presencePeriodicWorkName(smartspacerId),
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
+    /** Alle registrierten Targets und Bedingungen auffrischen (Heartbeat, Boot). */
+    fun refreshAll(context: Context, trigger: String) {
+        presenceIds(context).forEach { enqueuePresenceRefresh(context, it, trigger) }
+        targetIds(context).forEach { enqueueRefresh(context, it, trigger) }
     }
+
+    // Frühere Versionen hatten zusätzlich einen periodischen WorkManager-Job pro Bedingung. Der ist
+    // durch den Heartbeat überflüssig (im Doze ohnehin unzuverlässig) und wird hier einmalig
+    // abgeräumt. Aufgerufen beim App-Update/Boot und — als Netz — aus isRequirementMet.
+    private const val KEY_LEGACY_PERIODIC_CANCELLED = "legacy_periodic_cancelled"
+
+    private fun presencePeriodicWorkName(smartspacerId: String) = "ha_presence_periodic_$smartspacerId"
 
     fun cancelPresencePeriodicRefresh(context: Context, smartspacerId: String) {
         WorkManager.getInstance(context).cancelUniqueWork(presencePeriodicWorkName(smartspacerId))
+    }
+
+    fun cancelLegacyPeriodicRefreshes(context: Context) {
+        val prefs = prefs(context)
+        if (prefs.getBoolean(KEY_LEGACY_PERIODIC_CANCELLED, false)) return
+        presenceIds(context).forEach { cancelPresencePeriodicRefresh(context, it) }
+        prefs.edit { putBoolean(KEY_LEGACY_PERIODIC_CANCELLED, true) }
     }
 
     // Doze-fester Heartbeat für Anwesenheits-Bedingungen *und* Sensor-Targets. Weder
@@ -245,6 +259,11 @@ object HomeAssistantPrefs {
     // Feuern neu setzt (self-heilend auch aus Setup und jedem Worker-Lauf).
     private const val HEARTBEAT_REQUEST_CODE = 4711
     private val HEARTBEAT_INTERVAL_MS = TimeUnit.MINUTES.toMillis(15)
+
+    // Zeitpunkt, auf den der Alarm zuletzt gestellt wurde. AlarmManager lässt sich nicht fragen, ob
+    // ein Alarm noch aussteht; ohne diese Merkhilfe hat jede Selbstheilung den Alarm um 15 Min nach
+    // hinten geschoben — am wachen Gerät (isRequirementMet bei jeder Auswertung) feuerte er so nie.
+    private const val KEY_HEARTBEAT_AT = "heartbeat_at"
 
     private fun heartbeatPendingIntent(context: Context): PendingIntent {
         val intent = Intent(context.applicationContext, PresenceAlarmReceiver::class.java)
@@ -257,17 +276,32 @@ object HomeAssistantPrefs {
         )
     }
 
-    fun scheduleHeartbeat(context: Context) {
+    /**
+     * Setzt den nächsten Heartbeat auf jetzt + 15 Min — aber nur, wenn keiner aussteht. Als
+     * „ausstehend“ gilt ein Alarm, dessen Termin höchstens ein Intervall zurückliegt (im Doze
+     * feuert er etwas später). Liegt der Termin weiter zurück, ist der Alarm verloren gegangen
+     * und wird neu gesetzt. [force] setzt immer neu: für den Receiver selbst und nach Boot/Update,
+     * wo der gemerkte Termin nichts über den tatsächlichen Alarm sagt.
+     */
+    fun scheduleHeartbeat(context: Context, force: Boolean = false) {
         // Nur sinnvoll, wenn überhaupt etwas aufzufrischen ist.
-        if (presenceIds(context).isEmpty() && targetIds(context).isEmpty()) return
+        if (hasNothingToRefresh(context)) return
+        val now = System.currentTimeMillis()
+        val prefs = prefs(context)
+        if (!force) {
+            val scheduledAt = prefs.getLong(KEY_HEARTBEAT_AT, 0L)
+            if (scheduledAt > 0L && now < scheduledAt + HEARTBEAT_INTERVAL_MS) return
+        }
+        val triggerAt = now + HEARTBEAT_INTERVAL_MS
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = System.currentTimeMillis() + HEARTBEAT_INTERVAL_MS
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, heartbeatPendingIntent(context))
+        prefs.edit { putLong(KEY_HEARTBEAT_AT, triggerAt) }
     }
 
     fun cancelHeartbeat(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(heartbeatPendingIntent(context))
+        prefs(context).edit { remove(KEY_HEARTBEAT_AT) }
     }
 
     /** `true`, wenn weder eine Bedingung noch ein Target registriert ist — dann kann der Alarm weg. */

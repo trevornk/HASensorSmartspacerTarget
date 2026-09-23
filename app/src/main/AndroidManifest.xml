@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Nach einem Neustart sind alle Alarme weg: Heartbeat neu setzen, Cache auffrischen -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Damit die App die Home-Assistant-App trotz Package-Visibility ab Android 11 sehen und
          den Tap gezielt dorthin schicken kann -->
@@ -48,6 +50,15 @@
         <receiver
             android:name=".PresenceAlarmReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".HomeAssistantUpdateReceiver"

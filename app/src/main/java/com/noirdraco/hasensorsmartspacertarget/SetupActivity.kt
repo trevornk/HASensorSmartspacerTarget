@@ -99,20 +99,21 @@ class SetupActivity : Activity() {
         findViewById<Button>(R.id.button_save).setOnClickListener {
             val settings = currentInput() ?: return@setOnClickListener
             HomeAssistantPrefs.saveSettings(this, smartspacerId, settings)
-            // Sofort abrufen, damit der erste Wert nicht erst nach dem nächsten
-            // periodischen Refresh erscheint
+            // Sofort abrufen, damit der erste Wert nicht erst mit dem nächsten Heartbeat erscheint
             if (isPresence) {
-                // Fürs Auffrischen per Target-Update-Broadcast registrieren (zuverlässiger Takt)
+                // Fürs Auffrischen per Heartbeat und Target-Update-Broadcast registrieren
                 HomeAssistantPrefs.addPresenceId(this, smartspacerId)
-                HomeAssistantPrefs.enqueuePresenceRefresh(this, smartspacerId)
+                HomeAssistantPrefs.enqueuePresenceRefresh(
+                    this, smartspacerId, RefreshLog.TRIGGER_SETUP, replace = true
+                )
                 // Doze-fester Heartbeat (AlarmManager) — primärer autonomer Takt im Standby
                 HomeAssistantPrefs.scheduleHeartbeat(this)
-                // Zusätzlich unabhängiger periodischer Fallback-Takt
-                HomeAssistantPrefs.enqueuePresencePeriodicRefresh(this, smartspacerId)
             } else {
                 // Fürs Auffrischen per Doze-Heartbeat registrieren, bevor der Alarm gesetzt wird
                 HomeAssistantPrefs.addTargetId(this, smartspacerId)
-                HomeAssistantPrefs.enqueueRefresh(this, smartspacerId)
+                HomeAssistantPrefs.enqueueRefresh(
+                    this, smartspacerId, RefreshLog.TRIGGER_SETUP, replace = true
+                )
                 HomeAssistantPrefs.scheduleHeartbeat(this)
             }
             setResult(RESULT_OK)
