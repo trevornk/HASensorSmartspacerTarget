@@ -5,6 +5,15 @@
 Smartspacer plugin that fetches a Home Assistant sensor value via the REST API and shows it as
 a Smartspacer target (e.g. on the home screen / lock screen).
 
+## Installation
+
+Requirements: **Android 17 or newer** and an installed
+[Smartspacer](https://github.com/KieronQuinn/Smartspacer).
+
+Download the APK from the [Releases](https://github.com/WEITERFUNKEN-Thomas/HASensorSmartspacerTarget/releases)
+and install it. The plugin has no app icon of its own — you set it up directly in Smartspacer
+(see below).
+
 ## Setup
 
 ### 1. Get the values from Home Assistant

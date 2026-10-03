@@ -1,5 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
+}
+
+// Release-Signatur: Die Zugangsdaten liegen in keystore.properties im Projektwurzelverzeichnis
+// (storeFile, storePassword, keyAlias, keyPassword) und werden nicht eingecheckt. Fehlt die Datei,
+// baut assembleRelease trotzdem — dann unsigniert.
+val keystoreProps = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
@@ -18,10 +28,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             optimization {
                 enable = false
+            }
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }

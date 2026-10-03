@@ -5,6 +5,15 @@
 Smartspacer-Plugin, das einen Home-Assistant-Sensorwert per REST-API abruft und als
 Smartspacer-Target (z. B. auf dem Homescreen / Sperrbildschirm) anzeigt.
 
+## Installation
+
+Voraussetzungen: **Android 17 oder neuer** und ein installiertes
+[Smartspacer](https://github.com/KieronQuinn/Smartspacer).
+
+Die APK aus den [Releases](https://github.com/WEITERFUNKEN-Thomas/HASensorSmartspacerTarget/releases)
+laden und installieren. Das Plugin hat kein eigenes App-Symbol — eingerichtet wird es direkt in
+Smartspacer (siehe unten).
+
 ## Einrichtung
 
 ### 1. Werte in Home Assistant besorgen

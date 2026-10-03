@@ -14,3 +14,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+# Signatur – nicht einchecken
+keystore.properties
+*.jks
+*.keystore
