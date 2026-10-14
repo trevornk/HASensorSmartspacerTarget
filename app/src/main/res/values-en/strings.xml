@@ -26,6 +26,7 @@
     <string name="setup_test_ok">✓ %1$s: %2$s</string>
     <string name="setup_test_http">✗ Server error (HTTP %1$d). Check the token or entity ID.</string>
     <string name="setup_test_network">✗ No connection: %1$s. Check the URL and network.</string>
+    <string name="setup_error_local_network_denied">✗ Local network access denied. Without it the app cannot reach Home Assistant on your home network (Settings → Apps → Permissions → Nearby devices).</string>
     <string name="requirement_label">Home Assistant: At home</string>
     <string name="requirement_description">Condition met when your presence in Home Assistant is \"home\"</string>
     <string name="requirement_setup_title">Set up presence</string>

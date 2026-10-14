@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 17 (targetSdk 37): Zugriff aufs lokale Netz (LAN) ist ohne diese Laufzeit-
+         Berechtigung blockiert — auch für http(s)-Verbindungen zu Home Assistant im Heimnetz -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- Nach einem Neustart sind alle Alarme weg: Heartbeat neu setzen, Cache auffrischen -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

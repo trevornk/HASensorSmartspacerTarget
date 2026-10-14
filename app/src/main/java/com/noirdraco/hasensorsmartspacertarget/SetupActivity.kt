@@ -1,6 +1,8 @@
 package com.noirdraco.hasensorsmartspacertarget
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -21,6 +23,47 @@ class SetupActivity : Activity() {
         const val EXTRA_MODE = "setup_mode"
         const val MODE_SENSOR = "sensor"
         const val MODE_PRESENCE = "presence"
+
+        // Ab Android 17 (targetSdk 37) ist der Zugriff aufs lokale Netz (LAN) ohne diese
+        // Laufzeit-Berechtigung blockiert; TCP-Verbindungen laufen dann in einen Timeout.
+        private const val REQUEST_LOCAL_NETWORK = 1
+    }
+
+    // Läuft weiter, sobald der Nutzer die Berechtigung für das lokale Netz entschieden hat
+    private var pendingAfterLocalNetwork: ((granted: Boolean) -> Unit)? = null
+
+    private fun hasLocalNetworkPermission() =
+        checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /** Ruft [action] mit dem Ergebnis auf; fragt bei Bedarf zuerst nach der Berechtigung. */
+    private fun withLocalNetwork(action: (granted: Boolean) -> Unit) {
+        if (hasLocalNetworkPermission()) {
+            action(true)
+        } else {
+            pendingAfterLocalNetwork = action
+            requestPermissions(
+                arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK), REQUEST_LOCAL_NETWORK
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_LOCAL_NETWORK) return
+        val action = pendingAfterLocalNetwork
+        pendingAfterLocalNetwork = null
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            findViewById<TextView>(R.id.text_status)
+                ?.setText(R.string.setup_error_local_network_denied)
+            Toast.makeText(this, R.string.setup_error_local_network_denied, Toast.LENGTH_LONG)
+                .show()
+        }
+        action?.invoke(granted)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,8 +114,7 @@ class SetupActivity : Activity() {
             return SensorSettings(baseUrl, token, entityId, showOnlyIf)
         }
 
-        testButton.setOnClickListener {
-            val settings = currentInput() ?: return@setOnClickListener
+        fun runTest(settings: SensorSettings) {
             testButton.isEnabled = false
             statusView.setText(R.string.setup_test_running)
             // Netzwerk-Call gehört nicht auf den Main-Thread
@@ -96,8 +138,12 @@ class SetupActivity : Activity() {
             }.start()
         }
 
-        findViewById<Button>(R.id.button_save).setOnClickListener {
+        testButton.setOnClickListener {
             val settings = currentInput() ?: return@setOnClickListener
+            withLocalNetwork { granted -> if (granted) runTest(settings) }
+        }
+
+        fun saveAndFinish(settings: SensorSettings) {
             HomeAssistantPrefs.saveSettings(this, smartspacerId, settings)
             // Sofort abrufen, damit der erste Wert nicht erst mit dem nächsten Heartbeat erscheint
             if (isPresence) {
@@ -118,6 +164,14 @@ class SetupActivity : Activity() {
             }
             setResult(RESULT_OK)
             finish()
+        }
+
+        findViewById<Button>(R.id.button_save).setOnClickListener {
+            val settings = currentInput() ?: return@setOnClickListener
+            // Auch ohne vorherigen Test nach der Berechtigung fragen, sonst scheitern die
+            // Hintergrund-Abrufe im LAN stillschweigend. Gespeichert wird in jedem Fall — erst
+            // nach der Entscheidung, damit der Dialog nicht mit der Activity verschwindet.
+            withLocalNetwork { saveAndFinish(settings) }
         }
     }
 }
